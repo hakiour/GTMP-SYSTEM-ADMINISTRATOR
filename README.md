@@ -23,7 +23,7 @@ These instructions will get you a copy of the project up and running on your loc
 First we need to download the script on our server, you can do it throught sftp, git, etc. I do it with the wget command
 
 ```
-wget https://github.com/hakiour/JokeManager/archive/master.zip
+wget https://github.com/hakiour/GTMP-SYSTEM-ADMINISTRATOR/archive/master.zip
 ```
 
 Then, if you download the script with wget, we have a .zip file, unzip it with
