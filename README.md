@@ -87,6 +87,7 @@ The syntaxis is: `./gtmp` + [Parameter1] + [OptionalParameter2], Ex: `gtmp start
  Here you can see how there is no [screen](https://www.gnu.org/software/screen/manual/screen.html) session running, and because that the command fail the execution of the server, if we call the parameter `-f`orce, we force the creation of a screen session:
  <img src="https://i.imgur.com/zZqAqoR.gif">
  
+ <hr>
   * `stop`: With this parameter we order the server to stop, if we don't have the `$alwaysSafeStop`, the program don't kill screen session (what means it still online in the background), we can call the parameter `-f`orce for kill the screen sessions.
      * `-f` (force):  with the stop command, kill the screen GT-MP screen sesions after shutting down the server (it's the same as `$alwaysSafeStop`).
       
@@ -94,14 +95,21 @@ The syntaxis is: `./gtmp` + [Parameter1] + [OptionalParameter2], Ex: `gtmp start
 ```
 ./gtmp stop -f
 ```
-
+<hr>
  * `restart`: With this parameter we order the server to stop, and then start again. This command execute a `./gtmp start` and `./gtmp stop`, that means the parameters on `gtmp_config` (`$alwaysSafeStart`, `$alwaysSafeStop`, etc. affects this command). We can call the parameter `-f`orce for emulate `$alwaysSafeStart` and `$alwaysSafeStop`.
       
 *Example*:
 ```
 ./gtmp restart -f
 ```
-
+<hr>
+ * `-l`: life version, with this parameter we can follow the status of our server in real time (2 sec delay). We can add this to all commands or call it witouth any command.
+      
+*Example*:
+```
+./gtmp -l
+./gtmp start -l
+```
 ### Built With
 
 * [Php](http://php.net)
