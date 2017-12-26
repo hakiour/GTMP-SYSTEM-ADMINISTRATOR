@@ -1,0 +1,425 @@
+#!/usr/bin/php
+<?php
+/*     _____ _______     __  __ _____  
+	  / ____|__   __|   |  \/  |  __ \ 
+	 | |  __   | |______| \  / | |__) |
+	 | | |_ |  | |______| |\/| |  ___/ 
+	 | |__| |  | |      | |  | | |     
+	  \_____|  |_|      |_|  |_|_| Administrator Script   
+
+	Author: Hamza Akiour (www.hamza.es)
+	This project is licensed under the GNU (General Public License)
+*/
+
+	//General vars - CONFIGURE ON FILE 'gtmp_config'
+	$GLOBALS['path'] = "";
+	$GLOBALS['instance_name'] = "";
+	$GLOBALS['executable'] = "";
+	$GLOBALS['savelog'] = "";
+	$GLOBALS['alwaysSafeStart'] = "";
+	$GLOBALS['timestampOnLog'] = "";
+	$GLOBALS['alwaysSafeStop'] = "";
+
+	//Check if we cast the program with minimum one argument
+	if(count($argv) < 2)
+		castError("000");
+	$selected_option = $argv[1];
+
+	
+	//Check if the configuration file exist, if not, generate a new one
+	if(!file_exists("gtmp_config")){
+		echo "'gtmp_config' not found, generating new 'gtmp_config'\n";
+		generateNewConfigurationFile();
+	}
+
+	//Get the parameters and values from configuration file
+	$configuration_file = fopen('gtmp_config','r');
+	if(!$configuration_file)
+		castError("008");
+
+	while ($line = fgets($configuration_file)) {
+		if(substr($line,0,1) == "$"){
+			$parameter_pos = strpos($line , "=");
+			if ($parameter_pos)
+			{
+				$parameter_name = trim(substr($line , 0 ,$parameter_pos - 1));
+				$parameter_value = trim(substr($line , $parameter_pos + 1));
+				if(trim($parameter_value) <> ""){
+					switch ($parameter_name) {
+						case '$path':
+							$GLOBALS['path'] = $parameter_value;
+							break;
+						case '$instance_name':
+							$GLOBALS['instance_name'] = $parameter_value;
+							break;
+						case '$executable':
+							$GLOBALS['executable'] = $parameter_value;
+							break;
+						case '$savelog':
+							$GLOBALS['savelog'] = $parameter_value;
+							break;
+						case '$timestampOnLog':
+							$GLOBALS['timestampOnLog'] = $parameter_value;
+							break;
+						case '$alwaysSafeStart':
+							$GLOBALS['alwaysSafeStart'] = $parameter_value;
+							break;
+						case '$alwaysSafeStop':
+							$GLOBALS['alwaysSafeStop'] = $parameter_value;
+						break;
+					}
+				}
+			}
+		}
+	}
+	fclose($configuration_file);
+
+	//Check if we could load parameters from configuration file
+	if (trim($GLOBALS['path']) == "" || trim($GLOBALS['instance_name']) == "" || trim($GLOBALS['executable']) == "")
+		castError("007");
+
+	//Check if the executable exist
+	if (!file_exists("{$GLOBALS['path']}/{$GLOBALS['executable']}"))
+		castError("001");
+
+	//Procces the given option 
+	$selected_option = strtolower($selected_option);
+	if($selected_option == "start" && ($GLOBALS['alwaysSafeStart'] == "y" || existThisParameter("-f", $argv))){
+		if ($GLOBALS['alwaysSafeStart'] == "y")
+			echo "safestart option activated on 'gtmp_config' file\n";
+		else
+			echo "forcing safestart\n";
+		$selected_option = "safestart";
+	}
+	if($selected_option == "stop" && ($GLOBALS['alwaysSafeStop'] == "y") || existThisParameter("-f", $argv)){
+		if ($GLOBALS['alwaysSafeStop'] == "y")
+			echo "safestop option activated on 'gtmp_config' file\n";
+		else
+			echo "forcing safestop\n";
+		$selected_option = "safestop";
+	}
+
+	$status = processStatus("[m]ono {$GLOBALS['executable']}");
+	switch ($selected_option) {
+	    case "start":
+			if ($status)
+				castError("004");
+			if (!startServer($argv))
+				castError("005");
+			echo "Server started.\n";
+	        break;
+
+	    case "stop":
+	   		if (!$status)
+				castError("003");
+			if (!stopServer())
+				castError("006");
+			echo "Server stopped.\n";
+			break;
+
+	    case "restart":
+	    	if (!$status)
+				castError("003");
+        	echo "Restarting...\n";
+        	if (!stopServer())
+				castError("006");
+			sleep(2);
+			if (!startServer($argv))
+				castError("005");
+	        echo "Server restarted.\n";
+       		break;
+
+       	case "newconf":
+			if(file_exists("gtmp_config")){
+				`mv gtmp_config gtmp_config.old`;
+			}
+			generateNewConfigurationFile();
+       		break;
+
+       	case "safestart":    		
+       		if ($status)
+       			stopServer();
+       		if (existScreenSession())
+       			killAllScreenSessions();
+       		if (!startServer($argv,"forceStart"))
+				castError("005");
+       		break;
+
+       	case "safestop":    		
+   			if ($status)
+   				stopServer();
+       		if (existScreenSession())
+       			killAllScreenSessions();
+       		if (!isServerOn(true))
+				castError("006");
+       		break;
+       	case "-l": //In this case, we don't cast any error but keep the program runing
+       		break;
+	    default:
+   			castError("000");
+	}
+	//Folow log
+	if(existThisParameter("-l", $argv))
+	{
+		echo "Live option detected (-l)\n";
+		if(file_exists("{$GLOBALS['path']}gtmp-server.log")){
+			echo "Showing the log...\n";
+
+		$logfile = popen("tail -f {$GLOBALS['path']}gtmp-server.log 2>&1", 'r');
+		while(!feof($logfile)) {
+			$buffer = fgets($logfile);
+			echo "$buffer";
+		}
+		pclose($logfile);
+
+		//`tail -f {$GLOBALS['path']}gtmp-server.log`;
+		}
+		else
+			castError("009");
+	}
+
+	/*
+	*Functions
+	*/
+	function existThisParameter($parameter, $argv)
+	{
+		for ($index = 0; $index < sizeof($argv); $index++)
+		{
+			if(strtolower($argv[$index]) == strtolower($parameter))
+				return true;
+		}
+		return false;
+	}
+
+	function getParameterFromUser($message,$defaultValue)
+	{
+		$answer = readline("{$message}");
+		$answer = trim($answer);
+		if($answer == ""){
+				$answer = $defaultValue;
+		}
+		return $answer; 
+	}
+
+	function isYesOrNo($parameter, $default){
+		$parameter = strtolower(substr($parameter,0,1));
+		if($parameter <> "y" && $parameter <> "n"){
+				echo "Error, only can put 'y' or 'n', setting default value ('{$default}')\n";
+				$parameter = $default;
+		}
+		return $parameter;
+	}
+
+
+	function generateNewConfigurationFile()
+	{
+		echo "Leave empty the parameters for take automatically default value.\n";
+		do{
+			echo "-------------------------------------------------------\n";
+
+			$GLOBALS['path'] = getParameterFromUser("Introduce the path of your gt-mp folder (where you have the executable server file (Ex: /home/hakiour/gt-mp/)), recommended to no leave empty: ", getcwd());
+			if(substr($GLOBALS['path'], -1) <> "/")
+				$GLOBALS['path'] .= "/";
+
+			$GLOBALS['executable'] = getParameterFromUser("Introduce the name of your .exe (default:  GrandTheftMultiplayer.Server.exe): ", "GrandTheftMultiplayer.Server.exe");
+			
+			if (!file_exists("{$GLOBALS['path']}/{$GLOBALS['executable']}"))
+			{
+				echo "ERROR: the path ({$GLOBALS['path']}) or the executable ({$GLOBALS['executable']}) is incorrect.\n";
+				continue;
+			}
+
+			$GLOBALS['instance_name'] = getParameterFromUser("The name of the screen instance (if you don't know it, don't put anything): ", "gtav");
+
+			$GLOBALS['savelog'] = isYesOrNo(getParameterFromUser("Save logs for SCREEN sessions (recommended) (y/n): ", "y"), "y");
+			$GLOBALS['timestampOnLog'] = isYesOrNo(getParameterFromUser("Print timestamp on SCREEN sessions logs (y/n): ", "n"), "n");
+			$GLOBALS['alwaysSafeStart'] = isYesOrNo(getParameterFromUser("Always start on safemode (this kill the actual SCREEN sessions and start a new one): ", "y"), "y");
+			$GLOBALS['alwaysSafeStop'] = isYesOrNo(getParameterFromUser("Always stop on safemode (this kill all the gtmp SCREEN sessions): ", "y"), "y");
+			$answer = isYesOrNo(getParameterFromUser("Your path is: '{$GLOBALS['path']}', inside the path you have the executable server: '{$GLOBALS['executable']}', this run on the SCREEN instance '{$GLOBALS['instance_name']}', continue(y/n): ", "n"),"n");
+
+			if ($answer == "y")
+				break;
+		}while (true);
+		writeOnFile("gtmp_config",'$path = '.$GLOBALS['path']."\n".'$instance_name = '.$GLOBALS['instance_name']."\n".'$executable = '.$GLOBALS['executable']."\n".'$savelog = '.$GLOBALS['savelog']."\n".'$timestampOnLog = '.$GLOBALS['timestampOnLog']."\n".'$alwaysSafeStart = '.$GLOBALS['alwaysSafeStart']."\n".'$alwaysSafeStop = '.$GLOBALS['alwaysSafeStop']);
+	}
+	
+	function launchScreenSession(){
+		if($GLOBALS['savelog'] == "y"){
+			$name= "gtmp-server";
+			if($GLOBALS['timestampOnLog'] == "y"){
+				$config= "logfile {$GLOBALS['path']}/{$name}.log\nlogfile flush 1\nlog on\nlogtstamp after 1\nlogtstamp string \"\\012-------%Y-%m-%d %c:%s-------\\012\"\nlogtstamp on";
+			}else{
+				$config= "logfile {$GLOBALS['path']}/{$name}.log\nlogfile flush 1\nlog on\nlogtstamp off";
+			}
+			writeOnFile("log.conf",$config,"/tmp/");
+			`screen -S {$GLOBALS["instance_name"]} -c /tmp/log.conf -dmSL`;
+			if (`rm -f /tmp/log.conf`)//If it's true, means we don't have powers for delete the file (or create it)
+				castError("010", "/tmp/log.conf");
+		}else
+			`screen -S {$GLOBALS["instance_name"]} -dm`;
+	}
+
+	function killAllScreenSessions()
+	{
+		//Generate the /tmp/ScreenSessions file
+		TotalScreenSessions();
+
+		//Get the ScreenID's
+		$screenSessionsFile = fopen('/tmp/ScreenSessions','r');
+		if(!$screenSessionsFile)
+			{
+				//Try to generate the ScreenSessions File
+				$screenSessionsFileGenerated = False;
+				for ($index = 0; $index < 10; $index++)
+				{
+					sleep(1);
+					TotalScreenSessions();
+					$screenSessionsFile = fopen('/tmp/ScreenSessions','r');
+					if($screenSessionsFile){
+						$screenSessionsFileGenerated = true;
+						break;
+					}
+				}
+				if (!$screenSessionsFileGenerated)
+					return false;
+			}
+		//Kill each screen session
+		while ($line = fgets($screenSessionsFile)) {
+			$screen_pos = strpos($line , $GLOBALS['instance_name']);
+			$screenID = trim(substr($line , 0 ,$screen_pos - 1));
+			stopScreenSession($screenID);
+		}
+	}
+
+	function TotalScreenSessions()
+	{
+		`rm -f /tmp/ScreenSessions 2> /dev/null`;
+		$screenLines = `screen -ls | grep -w "{$GLOBALS['instance_name']}"`;
+		writeOnFile("ScreenSessions",$screenLines,"/tmp/");
+		return `wc -l /tmp/ScreenSessions`;
+	}
+
+	function stopScreenSession($instanceID = "")
+	{
+		if ($instanceID == "")
+			$instanceID = $GLOBALS['instanceID'];
+		`screen -X -S {$instanceID} quit`;
+	}
+
+	function writeOnFile($file,$text,$path = ""){
+		$thisFile = @fopen($path.$file, "w") or castError("010", $path.$file);
+		fwrite($thisFile, $text);
+		fclose($thisFile);
+	}
+	
+	function processStatus($grepThisProcess){
+		return `ps aux | grep "{$grepThisProcess}"` ? true : false;
+	}
+
+	function stopServer() {
+		echo "Shutting down the server...\n";
+		turnOffServer();
+		echo "Waiting while the server finish shutthing down.\n";
+
+		return isServerOn(false);
+	}
+
+	function existScreenSession()
+	{
+		return trim(`screen -ls | grep -w "{$GLOBALS['instance_name']}"`) <> "" ? true : false;
+	}
+
+	function startServer($argv,$extra = "") {
+		echo "Starting the server...\n";
+		sleep(1);//This sleep is because if we launch the server so fast the system can't take it
+		if (!existScreenSession())
+			{
+				if(existThisParameter("-f", $argv) || $extra == "forceStart")
+				{
+					launchScreenSession();
+				}
+				else
+					castError("002");
+			}
+        
+		turnOnServer();
+		return isServerOn();
+	}
+	
+	function turnOnServer(){
+		//For one bug on  GT-MP start exe, first we need to move to the executable folder.
+    	`screen -S gtav -p 0 -X stuff "cd {$GLOBALS['path']}\015"`;
+    	`screen -S gtav -p 0 -X stuff "mono {$GLOBALS['executable']}\015"`;
+	}
+	function turnOffServer(){
+		`screen -S {$GLOBALS['instance_name']} -p 0 -X stuff ^C`;
+	}
+	function isServerOn($WannaSeeIfServerIsPowerOff = false){
+		$count = 0;
+		 do {
+ 			$serverStatus = `ps aux | grep "[m]ono "{$GLOBALS['executable']}`;
+        	switch ($WannaSeeIfServerIsPowerOff) {
+        		case false:
+        			if ($serverStatus)
+					{
+		               	return true;
+					}
+        			break;
+        		case true:
+        			if (!$serverStatus)
+					{
+		               	return true;
+					}
+		        	break;
+        	}
+			sleep(1);	
+			$count++;	
+		}while ($count <= 7);
+		return false;
+	}
+
+	function castError($error_code, $extra = ""){
+		//cast and error and exit the program
+		$messageError = "";
+		switch($error_code)
+		{
+			case "000":
+					$messageError = "Usage: {start|stop|restart|safestart|newconf}";
+					break;
+			case "001":
+					$messageError = "Error 001 - {$GLOBALS['executable']} not found, check the path route on 'gtmp_config' file.";
+					break;
+			case "002":
+					$messageError = "Error 002 - Can't find the SCREEN SESSION where the server is executed, if you want to start a new session call the command with the -f parameter ('gtmp start -f').";
+					break;
+			case "003":
+					$messageError = "Error 003 - The server isn't startet. Use 'gtmp start' for start the server.";
+					break;
+			case "004":
+					$messageError = "Error 004 - The server is already started.";
+					break;
+			case "005":
+					$messageError = "Error 005 - The server could not be started.";
+					break;
+			case "006":
+					$messageError	= "Error 006 - The server could not be shut down.";
+					break;
+			case "007":
+					$messageError	= "Error 007 - Bad configuration on 'gtmp_config' file.";
+					break;
+			case "008":
+					$messageError	= "Error 008 - Can't read 'gtmp_config', permission denied).";
+					break;
+			case "009":
+					$messageError	= "Error 009 - {$GLOBALS['path']}gtmp-Server.log file not found, check the configuration file ('gtmp_config').";
+					break;
+			case "010":
+					$messageError	= "Error 010 - Can't access to {$extra}, insufficient permission. Please delete the file or change the permissions.";
+					break;
+			default:
+   					$messageError	= "Error 011 - Undefined error.";
+   					break;
+		}
+		exit("{$messageError}\n");
+	}
+?>
