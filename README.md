@@ -31,7 +31,7 @@ Then, if you download the script with wget, we have a .zip file, unzip it with
 ```
 unzip master.zip
 ```
-Now we add the permisions on the script
+Now we need the executable permisions on the script, we can do this with the chmod command
 
 ```
 chmod +x gtmp
@@ -40,7 +40,7 @@ If we use `ls -l`:
 
 <img src="https://i.imgur.com/QEV6KWz.png">
 
-we can see that we have the executable permision on the gtmp script.
+we can see that we have the executable permision added on the gtmp script.
 
 ## Configuration file
 The configuration file is were the global settings for this script are setted. By default the file name is `gtmp_config`, saved on the same folder as the gtmp script.
